@@ -2,12 +2,14 @@ import json
 import copy
 from aiohttp import web
 from config.logger import setup_logging
+from core.api.base_handler import BaseHandler
 from core.utils.util import get_vision_url, is_valid_image_file
 from core.utils.vllm import create_instance
 from config.config_loader import get_private_config_from_api
 from core.utils.auth import AuthToken
 import base64
 from typing import Tuple, Optional
+from plugins_func.register import Action
 
 TAG = __name__
 
@@ -15,10 +17,9 @@ TAG = __name__
 MAX_FILE_SIZE = 5 * 1024 * 1024
 
 
-class VisionHandler:
+class VisionHandler(BaseHandler):
     def __init__(self, config: dict):
-        self.config = config
-        self.logger = setup_logging()
+        super().__init__(config)
         # 初始化认证工具
         self.auth = AuthToken(config["server"]["auth_key"])
 
@@ -55,11 +56,7 @@ class VisionHandler:
             device_id = request.headers.get("Device-Id", "")
             client_id = request.headers.get("Client-Id", "")
             if device_id != token_device_id:
-                return web.Response(
-                    text=json.dumps(self._create_error_response("设备ID与token不匹配")),
-                    content_type="application/json",
-                    status=401,
-                )
+                raise ValueError("设备ID与token不匹配")
             # 解析multipart/form-data请求
             reader = await request.multipart()
 
@@ -99,7 +96,7 @@ class VisionHandler:
             current_config = copy.deepcopy(self.config)
             read_config_from_api = current_config.get("read_config_from_api", False)
             if read_config_from_api:
-                current_config = get_private_config_from_api(
+                current_config = await get_private_config_from_api(
                     current_config,
                     device_id,
                     client_id,
@@ -126,7 +123,8 @@ class VisionHandler:
 
             return_json = {
                 "success": True,
-                "result": result,
+                "action": Action.RESPONSE.name,
+                "response": result,
             }
 
             response = web.Response(
@@ -174,11 +172,3 @@ class VisionHandler:
         finally:
             self._add_cors_headers(response)
             return response
-
-    def _add_cors_headers(self, response):
-        """添加CORS头信息"""
-        response.headers["Access-Control-Allow-Headers"] = (
-            "client-id, content-type, device-id"
-        )
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Origin"] = "*"

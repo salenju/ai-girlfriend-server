@@ -1,12 +1,7 @@
 import os
-import argparse
 import yaml
 from collections.abc import Mapping
 from config.manage_api_client import init_service, get_server_config, get_agent_models
-
-
-# 添加全局配置缓存
-_config_cache = None
 
 
 def get_project_dir():
@@ -22,9 +17,12 @@ def read_config(config_path):
 
 def load_config():
     """加载配置文件"""
-    global _config_cache
-    if _config_cache is not None:
-        return _config_cache
+    from core.utils.cache.manager import cache_manager, CacheType
+
+    # 检查缓存
+    cached_config = cache_manager.get(CacheType.CONFIG, "main_config")
+    if cached_config is not None:
+        return cached_config
 
     default_config_path = get_project_dir() + "config.yaml"
     custom_config_path = get_project_dir() + "data/.config.yaml"
@@ -34,23 +32,34 @@ def load_config():
     custom_config = read_config(custom_config_path)
 
     if custom_config.get("manager-api", {}).get("url"):
-        config = get_config_from_api(custom_config)
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+            # 如果已经在事件循环中，使用异步版本
+            config = asyncio.run_coroutine_threadsafe(
+                get_config_from_api_async(custom_config), loop
+            ).result()
+        except RuntimeError:
+            # 如果不在事件循环中（启动时），创建新的事件循环
+            config = asyncio.run(get_config_from_api_async(custom_config))
     else:
         # 合并配置
         config = merge_configs(default_config, custom_config)
     # 初始化目录
     ensure_directories(config)
-    _config_cache = config
+
+    # 缓存配置
+    cache_manager.set(CacheType.CONFIG, "main_config", config)
     return config
 
 
-def get_config_from_api(config):
-    """从Java API获取配置"""
+async def get_config_from_api_async(config):
+    """从Java API获取配置（异步版本）"""
     # 初始化API客户端
     init_service(config)
 
     # 获取服务器配置
-    config_data = get_server_config()
+    config_data = await get_server_config()
     if config_data is None:
         raise Exception("Failed to fetch server config from API")
 
@@ -59,6 +68,7 @@ def get_config_from_api(config):
         "url": config["manager-api"].get("url", ""),
         "secret": config["manager-api"].get("secret", ""),
     }
+    auth_enabled = config_data.get("server", {}).get("auth", {}).get("enabled", False)
     # server的配置以本地为准
     if config.get("server"):
         config_data["server"] = {
@@ -68,12 +78,16 @@ def get_config_from_api(config):
             "vision_explain": config["server"].get("vision_explain", ""),
             "auth_key": config["server"].get("auth_key", ""),
         }
+    config_data["server"]["auth"] = {"enabled": auth_enabled}
+    # 如果服务器没有prompt_template，则从本地配置读取
+    if not config_data.get("prompt_template"):
+        config_data["prompt_template"] = config.get("prompt_template")
     return config_data
 
 
-def get_private_config_from_api(config, device_id, client_id):
+async def get_private_config_from_api(config, device_id, client_id):
     """从Java API获取私有配置"""
-    return get_agent_models(device_id, client_id, config["selected_module"])
+    return await get_agent_models(device_id, client_id, config["selected_module"])
 
 
 def ensure_directories(config):

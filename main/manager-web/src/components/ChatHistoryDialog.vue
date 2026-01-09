@@ -1,5 +1,6 @@
 <template>
-    <el-dialog :title="'与' + agentName + '的聊天记录' + (currentMacAddress ? '[' + currentMacAddress + ']' : '')"
+    <el-dialog
+        :title="$t('chatHistory.with') + agentName + $t('chatHistory.dialogTitle') + (currentMacAddress ? '[' + currentMacAddress + ']' : '')"
         :visible.sync="dialogVisible" width="80%" :before-close="handleClose" custom-class="chat-history-dialog">
         <div class="chat-container">
             <div class="session-list" @scroll="handleScroll">
@@ -11,8 +12,8 @@
                         <div class="message-count">{{ session.chatCount > 99 ? '99' : session.chatCount }}</div>
                     </div>
                 </div>
-                <div v-if="loading" class="loading">加载中...</div>
-                <div v-if="!hasMore" class="no-more">没有更多记录了</div>
+                <div v-if="loading" class="loading">{{ $t('chatHistory.loading') }}</div>
+                <div v-if="!hasMore" class="no-more">{{ $t('chatHistory.noMoreRecords') }}</div>
             </div>
             <div class="chat-content">
                 <div v-if="currentSessionId" class="messages">
@@ -24,7 +25,7 @@
                             <img :src="message.chatType === 1 ? getUserAvatar(currentSessionId) : require('@/assets/xiaozhi-logo.png')"
                                 class="avatar" />
                             <div class="message-content">
-                                {{ message.content }}
+                                {{ extractContentFromString(message.content) }}
                                 <i v-if="message.audioId" :class="getAudioIconClass(message)"
                                     @click="playAudio(message)" class="audio-icon"></i>
                             </div>
@@ -32,9 +33,17 @@
                     </div>
                 </div>
                 <div v-else class="no-session-selected">
-                    请选择会话查看聊天记录
+                    {{ $t('chatHistory.selectSession') }}
                 </div>
             </div>
+        </div>
+        <div v-if="currentSessionId" class="download-buttons">
+            <el-button type="primary" plain size="small" @click="downloadCurrentSessionWithPrevious">
+                {{ $t('chatHistory.downloadCurrentWithPreviousSessions') }}
+            </el-button>
+            <el-button type="primary" plain size="small" @click="downloadCurrentSession">
+                {{ $t('chatHistory.downloadCurrentSession') }}
+            </el-button>
         </div>
     </el-dialog>
 </template>
@@ -129,6 +138,32 @@ export default {
         }
     },
     methods: {
+        /**
+         * 从 content 字段中提取聊天内容
+         * 如果 content 是 JSON 格式（如 {"speaker": "未知说话人", "content": "现在几点了。"}），则提取 content 字段
+         * 如果 content 是普通字符串，则直接返回
+         * 
+         * @param {string} content 原始内容
+         * @returns {string} 提取的聊天内容
+         */
+        extractContentFromString(content) {
+            if (!content || content.trim() === '') {
+                return content;
+            }
+
+            // 尝试解析为 JSON
+            try {
+                const jsonObj = JSON.parse(content);
+                if (jsonObj && typeof jsonObj === 'object' && jsonObj.content) {
+                    return jsonObj.content;
+                }
+            } catch (e) {
+                // 如果不是有效的 JSON，直接返回原内容
+            }
+
+            // 如果不是 JSON 格式或没有 content 字段，直接返回原内容
+            return content;
+        },
         resetData() {
             this.sessions = [];
             this.messages = [];
@@ -204,9 +239,9 @@ export default {
             const minutes = date.getMinutes().toString().padStart(2, '0');
 
             if (date >= today) {
-                return `今天 ${hours}:${minutes}`;
+                return `${this.$t('chatHistory.today')} ${hours}:${minutes}`;
             } else if (date >= yesterday) {
-                return `昨天 ${hours}:${minutes}`;
+                return `${this.$t('chatHistory.yesterday')} ${hours}:${minutes}`;
             } else {
                 const year = date.getFullYear();
                 const month = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -266,6 +301,30 @@ export default {
 
             // 返回对应的头像图片
             return require(`@/assets/user-avatar${avatarIndex}.png`);
+        },
+
+        // 下载本会话聊天记录
+        downloadCurrentSession() {
+            Api.agent.getDownloadUrl(this.agentId, this.currentSessionId, (res) => {
+                if (res && res.data && res.data.code === 0 && res.data.data) {
+                    const uuid = res.data.data;
+                    window.open(`${Api.getServiceUrl()}/agent/chat-history/download/${uuid}/current`, '_blank');
+                } else {
+                    this.$message.error(this.$t('chatHistory.downloadLinkFailed'));
+                }
+            });
+        },
+
+        // 下载本会话及前20条会话聊天记录
+        downloadCurrentSessionWithPrevious() {
+            Api.agent.getDownloadUrl(this.agentId, this.currentSessionId, (res) => {
+                if (res && res.data && res.data.code === 0 && res.data.data) {
+                    const uuid = res.data.data;
+                    window.open(`${Api.getServiceUrl()}/agent/chat-history/download/${uuid}/previous`, '_blank');
+                } else {
+                    this.$message.error(this.$t('chatHistory.downloadLinkFailed'));
+                }
+            });
         }
     }
 };
@@ -415,6 +474,22 @@ export default {
     vertical-align: middle;
     margin: 0 10px;
 }
+
+.download-buttons {
+    padding: 20px;
+    display: flex;
+    gap: 10px;
+    border-top: 1px solid #eee;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: white;
+}
+
+.download-buttons .el-button {
+    flex: 1;
+}
 </style>
 
 <style>
@@ -427,7 +502,7 @@ export default {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    height: 90vh;
+    height: 98vh;
     max-width: 85vw;
     border-radius: 12px;
     overflow: hidden;

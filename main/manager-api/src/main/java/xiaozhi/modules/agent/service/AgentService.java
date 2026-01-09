@@ -5,8 +5,11 @@ import java.util.Map;
 
 import xiaozhi.common.page.PageData;
 import xiaozhi.common.service.BaseService;
+import xiaozhi.modules.agent.dto.AgentCreateDTO;
 import xiaozhi.modules.agent.dto.AgentDTO;
+import xiaozhi.modules.agent.dto.AgentUpdateDTO;
 import xiaozhi.modules.agent.entity.AgentEntity;
+import xiaozhi.modules.agent.vo.AgentInfoVO;
 
 /**
  * 智能体表处理service
@@ -30,7 +33,7 @@ public interface AgentService extends BaseService<AgentEntity> {
      * @param id 智能体ID
      * @return 智能体实体
      */
-    AgentEntity getAgentById(String id);
+    AgentInfoVO getAgentById(String id);
 
     /**
      * 插入智能体
@@ -51,9 +54,11 @@ public interface AgentService extends BaseService<AgentEntity> {
      * 获取用户智能体列表
      *
      * @param userId 用户ID
+     * @param keyword 搜索关键词
+     * @param searchType 搜索类型（name - 按名称搜索，mac - 按MAC地址搜索）
      * @return 智能体列表
      */
-    List<AgentDTO> getUserAgents(Long userId);
+    List<AgentDTO> getUserAgents(Long userId, String keyword, String searchType);
 
     /**
      * 根据智能体ID获取设备数量
@@ -79,4 +84,22 @@ public interface AgentService extends BaseService<AgentEntity> {
      * @return 是否有权限
      */
     boolean checkAgentPermission(String agentId, Long userId);
+
+    /**
+     * 更新智能体
+     *
+     * @param agentId 智能体ID
+     * @param dto     更新智能体所需的信息
+     */
+    void updateAgentById(String agentId, AgentUpdateDTO dto);
+
+    /**
+     * 创建智能体
+     *
+     * @param dto 创建智能体所需的信息
+     * @return 创建的智能体ID
+     */
+    String createAgent(AgentCreateDTO dto);
+
+
 }
